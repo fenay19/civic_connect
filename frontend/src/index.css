@@ -1,0 +1,167 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Government-grade Design System for Grievance Redressal
+   Professional color palette with status indicators
+   All colors in HSL format */
+
+@layer base {
+    :root {
+        /* Government Blue Theme */
+        --background: 210 25% 97%;
+        --foreground: 215 25% 15%;
+
+        --card: 0 0% 100%;
+        --card-foreground: 215 25% 15%;
+
+        --popover: 0 0% 100%;
+        --popover-foreground: 215 25% 15%;
+
+        /* Deep Government Blue */
+        --primary: 213 55% 25%;
+        --primary-foreground: 0 0% 100%;
+
+        /* Light Blue-Gray */
+        --secondary: 210 20% 94%;
+        --secondary-foreground: 215 25% 20%;
+
+        --muted: 210 15% 92%;
+        --muted-foreground: 215 15% 45%;
+
+        --accent: 213 45% 90%;
+        --accent-foreground: 213 55% 25%;
+
+        /* Red for errors/high priority */
+        --destructive: 0 72% 51%;
+        --destructive-foreground: 0 0% 100%;
+
+        --border: 214 20% 85%;
+        --input: 214 20% 85%;
+        --ring: 213 55% 35%;
+
+        --radius: 0.5rem;
+
+        /* Status Colors */
+        --status-high: 0 72% 51%;
+        --status-high-foreground: 0 0% 100%;
+        --status-medium: 38 92% 50%;
+        --status-medium-foreground: 0 0% 10%;
+        --status-low: 142 71% 45%;
+        --status-low-foreground: 0 0% 100%;
+        --status-pending: 213 45% 50%;
+        --status-pending-foreground: 0 0% 100%;
+        --status-progress: 38 92% 50%;
+        --status-progress-foreground: 0 0% 10%;
+        --status-resolved: 142 71% 45%;
+        --status-resolved-foreground: 0 0% 100%;
+
+        /* Sentiment Colors */
+        --sentiment-negative: 0 72% 55%;
+        --sentiment-neutral: 215 15% 50%;
+        --sentiment-positive: 142 71% 45%;
+
+        /* Sidebar */
+        --sidebar-background: 213 55% 20%;
+        --sidebar-foreground: 210 20% 95%;
+        --sidebar-primary: 210 100% 70%;
+        --sidebar-primary-foreground: 0 0% 100%;
+        --sidebar-accent: 213 45% 30%;
+        --sidebar-accent-foreground: 210 20% 95%;
+        --sidebar-border: 213 40% 30%;
+        --sidebar-ring: 210 100% 70%;
+
+        /* Chart Colors */
+        --chart-1: 213 55% 35%;
+        --chart-2: 180 60% 45%;
+        --chart-3: 280 60% 55%;
+        --chart-4: 38 92% 50%;
+        --chart-5: 0 72% 51%;
+    }
+
+    .dark {
+        --background: 215 30% 8%;
+        --foreground: 210 20% 95%;
+
+        --card: 215 30% 12%;
+        --card-foreground: 210 20% 95%;
+
+        --popover: 215 30% 12%;
+        --popover-foreground: 210 20% 95%;
+
+        --primary: 210 100% 65%;
+        --primary-foreground: 215 30% 8%;
+
+        --secondary: 215 25% 18%;
+        --secondary-foreground: 210 20% 95%;
+
+        --muted: 215 25% 18%;
+        --muted-foreground: 215 15% 60%;
+
+        --accent: 215 25% 22%;
+        --accent-foreground: 210 20% 95%;
+
+        --destructive: 0 62% 45%;
+        --destructive-foreground: 0 0% 100%;
+
+        --border: 215 25% 22%;
+        --input: 215 25% 22%;
+        --ring: 210 100% 65%;
+
+        --sidebar-background: 215 30% 10%;
+        --sidebar-foreground: 210 20% 95%;
+        --sidebar-primary: 210 100% 70%;
+        --sidebar-primary-foreground: 0 0% 100%;
+        --sidebar-accent: 215 25% 18%;
+        --sidebar-accent-foreground: 210 20% 95%;
+        --sidebar-border: 215 25% 22%;
+        --sidebar-ring: 210 100% 70%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background text-foreground antialiased;
+    }
+}
+
+@layer utilities {
+    .glass-card {
+        @apply bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg;
+    }
+
+    .gradient-govt {
+        background: linear-gradient(
+            135deg,
+            hsl(213 55% 25%) 0%,
+            hsl(213 45% 35%) 100%
+        );
+    }
+
+    .status-badge {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    }
+}
+
+/* Leaflet custom marker styles */
+.custom-marker {
+    background: transparent !important;
+    border: none !important;
+}
+
+.leaflet-popup-content-wrapper {
+    border-radius: 0.5rem;
+}
+
+.leaflet-popup-content {
+    margin: 0.75rem;
+    min-width: 150px;
+}
+
+.leaflet-container {
+    font-family: inherit;
+}

@@ -1,0 +1,19 @@
+{
+    "name": "grievance-backend",
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+  "start": "node src/app.js",
+  "dev": "nodemon src/app.js"
+},
+    "dependencies": {
+        "cors": "^2.8.5",
+        "dotenv": "^17.2.3",
+        "express": "^4.18.2",
+        "sqlite": "^5.1.1",
+        "sqlite3": "^6.0.1"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.2"
+    }
+}
