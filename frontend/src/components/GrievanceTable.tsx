@@ -32,9 +32,10 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { MapPin, Eye, Filter, X, Image as ImageIcon } from "lucide-react";
+import { MapPin, Eye, Filter, X, Image as ImageIcon, Send, BarChart3, ThumbsUp, ThumbsDown, Users, Loader2, RefreshCw } from "lucide-react";
 import { CATEGORIES } from "@/types/grievance";
 import { updateGrievanceStatus } from "@/lib/grievanceStore";
+import { triggerCommunityPoll, fetchPollResults, PollResults } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -297,6 +298,12 @@ function GrievanceDetail({ grievance, onUpdate }: GrievanceDetailProps) {
     const [isSaving, setIsSaving] = useState(false);
     const { toast } = useToast();
 
+    // Poll state
+    const [pollResults, setPollResults] = useState<PollResults | null>(null);
+    const [isPollLoading, setIsPollLoading] = useState(false);
+    const [isSendingPoll, setIsSendingPoll] = useState(false);
+    const [pollFetched, setPollFetched] = useState(false);
+
     // Keep synced when external props change
     // Useful in case it stays open while data trickles down
     useEffect(() => {
@@ -304,7 +311,44 @@ function GrievanceDetail({ grievance, onUpdate }: GrievanceDetailProps) {
         setNotes(grievance.notes || "");
         setDepartment(grievance.assignedDepartment || "");
         setCategory(grievance.analysis.category);
+        // Fetch poll results when grievance changes
+        loadPollResults();
     }, [grievance]);
+
+    const loadPollResults = async () => {
+        setIsPollLoading(true);
+        try {
+            const results = await fetchPollResults(grievance.id);
+            setPollResults(results);
+            setPollFetched(true);
+        } catch {
+            // No polls yet, that's fine
+            setPollResults(null);
+        } finally {
+            setIsPollLoading(false);
+        }
+    };
+
+    const handleSendPoll = async () => {
+        setIsSendingPoll(true);
+        try {
+            const result = await triggerCommunityPoll(grievance.id);
+            toast({
+                title: "🗳️ Poll Sent",
+                description: result.message,
+            });
+            // Refresh poll results
+            await loadPollResults();
+        } catch (err: any) {
+            toast({
+                title: "Error",
+                description: err.message || "Failed to send poll",
+                variant: "destructive",
+            });
+        } finally {
+            setIsSendingPoll(false);
+        }
+    };
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -437,6 +481,164 @@ function GrievanceDetail({ grievance, onUpdate }: GrievanceDetailProps) {
                     </div>
                 </div>
 
+                {/* ═══════ Community Poll Section ═══════ */}
+                <div className="space-y-3 p-4 rounded-lg border bg-accent/30">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <BarChart3 className="h-4 w-4 text-primary" />
+                            <Label className="text-sm font-semibold">Community Verification Poll</Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {pollFetched && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={loadPollResults}
+                                    disabled={isPollLoading}
+                                    className="h-7 px-2"
+                                >
+                                    <RefreshCw className={`h-3.5 w-3.5 ${isPollLoading ? 'animate-spin' : ''}`} />
+                                </Button>
+                            )}
+                            <Button
+                                size="sm"
+                                onClick={handleSendPoll}
+                                disabled={isSendingPoll}
+                                className="h-7"
+                            >
+                                {isSendingPoll ? (
+                                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                ) : (
+                                    <Send className="h-3.5 w-3.5 mr-1.5" />
+                                )}
+                                Send Poll to Nearby Residents
+                            </Button>
+                        </div>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                        Sends a Telegram poll to all registered users within 500m of this complaint's location. 
+                        If 3+ residents confirm the issue, the priority is automatically escalated to HIGH.
+                    </p>
+
+                    {/* Poll Results */}
+                    {isPollLoading && !pollFetched && (
+                        <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading poll results...
+                        </div>
+                    )}
+
+                    {pollFetched && pollResults && pollResults.polls.length > 0 && (
+                        <div className="space-y-3">
+                            {/* Summary bar */}
+                            <div className="grid grid-cols-3 gap-3">
+                                <div className="flex items-center gap-2 p-2.5 rounded-md bg-green-500/10 border border-green-500/20">
+                                    <ThumbsUp className="h-4 w-4 text-green-600" />
+                                    <div>
+                                        <p className="text-lg font-bold text-green-700 dark:text-green-400 leading-none">
+                                            {pollResults.totalYes}
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground">Confirmed</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 p-2.5 rounded-md bg-red-500/10 border border-red-500/20">
+                                    <ThumbsDown className="h-4 w-4 text-red-600" />
+                                    <div>
+                                        <p className="text-lg font-bold text-red-700 dark:text-red-400 leading-none">
+                                            {pollResults.totalNo}
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground">Denied</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 p-2.5 rounded-md bg-blue-500/10 border border-blue-500/20">
+                                    <Users className="h-4 w-4 text-blue-600" />
+                                    <div>
+                                        <p className="text-lg font-bold text-blue-700 dark:text-blue-400 leading-none">
+                                            {pollResults.totalPolled}
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground">Polled</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Progress bar */}
+                            {pollResults.totalPolled > 0 && (
+                                <div className="space-y-1">
+                                    <div className="flex justify-between text-[10px] text-muted-foreground">
+                                        <span>Confirmation rate</span>
+                                        <span>
+                                            {Math.round(
+                                                (pollResults.totalYes /
+                                                    Math.max(pollResults.totalYes + pollResults.totalNo, 1)) *
+                                                    100
+                                            )}%
+                                        </span>
+                                    </div>
+                                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full transition-all duration-500"
+                                            style={{
+                                                width: `${(pollResults.totalYes / Math.max(pollResults.totalYes + pollResults.totalNo, 1)) * 100}%`,
+                                                background: 'linear-gradient(90deg, #22c55e, #16a34a)',
+                                            }}
+                                        />
+                                    </div>
+                                    {pollResults.totalYes >= 3 && (
+                                        <p className="text-xs font-medium text-green-600 dark:text-green-400 flex items-center gap-1 mt-1">
+                                            ✅ Threshold reached — priority auto-escalated to HIGH
+                                        </p>
+                                    )}
+                                    {pollResults.totalYes > 0 && pollResults.totalYes < 3 && (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {3 - pollResults.totalYes} more confirmation(s) needed for auto-escalation
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Individual poll details */}
+                            {pollResults.polls.map((poll) => (
+                                <div key={poll.id} className="text-xs border rounded-md p-3 space-y-2 bg-background">
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-medium">Poll #{poll.id}</span>
+                                        <span className="text-muted-foreground">
+                                            {format(new Date(poll.createdAt), "PPp")}
+                                        </span>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <span className="text-green-600">👍 {poll.yesCount}</span>
+                                        <span className="text-red-600">👎 {poll.noCount}</span>
+                                        <span className="text-muted-foreground">📩 {poll.totalVotes} polled</span>
+                                    </div>
+                                    {poll.votes.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 pt-1">
+                                            {poll.votes.map((v, i) => (
+                                                <span
+                                                    key={i}
+                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                                                        v.vote === 'yes'
+                                                            ? 'bg-green-500/15 text-green-700 dark:text-green-400'
+                                                            : 'bg-red-500/15 text-red-700 dark:text-red-400'
+                                                    }`}
+                                                >
+                                                    {v.vote === 'yes' ? '👍' : '👎'}
+                                                    {v.telegramUsername ? `@${v.telegramUsername}` : v.userName}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {pollFetched && (!pollResults || pollResults.polls.length === 0) && (
+                        <div className="text-center py-3 text-xs text-muted-foreground">
+                            No polls have been sent yet for this complaint.
+                        </div>
+                    )}
+                </div>
 
                 {/* Status Update */}
                 <div className="grid gap-4">

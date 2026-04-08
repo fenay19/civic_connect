@@ -76,3 +76,100 @@ export async function loginUser(data: any): Promise<any> {
     if (!response.ok) throw new Error(result.error || "Failed to login");
     return result;
 }
+
+// ===================== Telegram APIs =====================
+
+export async function checkTelegramStatus(userId: string | number): Promise<{ linked: boolean; username: string | null }> {
+    const response = await fetch(`${API_BASE_URL}/users/${userId}/telegram-status`);
+    if (!response.ok) {
+        throw new Error("Failed to check Telegram status");
+    }
+    return response.json();
+}
+
+export async function linkTelegram(userId: string | number, telegramChatId: string, telegramUsername?: string): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/users/link-telegram`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, telegramChatId, telegramUsername }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Failed to link Telegram");
+    return result;
+}
+
+export async function updateUserLocation(userId: string | number, latitude: number, longitude: number): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/users/${userId}/location`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ latitude, longitude }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Failed to update location");
+    return result;
+}
+
+// ===================== Pre-registration Telegram Token =====================
+
+export async function generateTelegramToken(): Promise<{ token: string }> {
+    const response = await fetch(`${API_BASE_URL}/users/telegram-token`, {
+        method: "POST",
+    });
+    if (!response.ok) throw new Error("Failed to generate token");
+    return response.json();
+}
+
+export interface TelegramTokenStatus {
+    linked: boolean;
+    chatId?: string;
+    firstName?: string;
+    lastName?: string;
+    username?: string;
+}
+
+export async function checkTelegramToken(token: string): Promise<TelegramTokenStatus> {
+    const response = await fetch(`${API_BASE_URL}/users/telegram-token/${token}`);
+    if (!response.ok) throw new Error("Failed to check token");
+    return response.json();
+}
+
+// ===================== Admin Poll APIs =====================
+
+export interface PollVote {
+    userName: string;
+    telegramUsername: string | null;
+    vote: "yes" | "no";
+    votedAt: string;
+}
+
+export interface PollDetail {
+    id: number;
+    question: string;
+    yesCount: number;
+    noCount: number;
+    totalVotes: number;
+    createdAt: string;
+    votes: PollVote[];
+}
+
+export interface PollResults {
+    polls: PollDetail[];
+    totalYes: number;
+    totalNo: number;
+    totalPolled: number;
+}
+
+export async function triggerCommunityPoll(complaintId: string): Promise<{ success: boolean; message: string; nearbyUsersCount: number }> {
+    const response = await fetch(`${API_BASE_URL}/complaints/${complaintId}/poll`, {
+        method: "POST",
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Failed to trigger poll");
+    return result;
+}
+
+export async function fetchPollResults(complaintId: string): Promise<PollResults> {
+    const response = await fetch(`${API_BASE_URL}/complaints/${complaintId}/poll`);
+    if (!response.ok) throw new Error("Failed to fetch poll results");
+    return response.json();
+}

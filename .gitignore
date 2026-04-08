@@ -1,0 +1,16 @@
+# Database
+*.db
+
+# Node
+node_modules
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Build
+dist
+
+# OS
+.DS_Store
