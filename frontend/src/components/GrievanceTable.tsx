@@ -368,17 +368,6 @@ function GrievanceDetail({ grievance, onUpdate }: GrievanceDetailProps) {
                                 {CATEGORIES[grievance.analysis.category].label}
                             </p>
                         </div>
-                        <div>
-                            <span className="text-xs text-muted-foreground">
-                                Confidence
-                            </span>
-                            <p className="font-medium">
-                                {Math.round(
-                                    grievance.analysis.confidence * 100
-                                )}
-                                %
-                            </p>
-                        </div>
                         <div className="flex flex-col gap-1">
                             <span className="text-xs text-muted-foreground">
                                 Sentiment
@@ -389,16 +378,6 @@ function GrievanceDetail({ grievance, onUpdate }: GrievanceDetailProps) {
                                     sentiment={grievance.analysis.sentiment}
                                 />
                             </div>
-                        </div>
-
-                        <div>
-                            <span className="text-xs text-muted-foreground">
-                                Keywords
-                            </span>
-                            <p className="text-sm">
-                                {grievance.analysis.keywords.join(", ") ||
-                                    "None detected"}
-                            </p>
                         </div>
                     </div>
                 </div>
