@@ -1,22 +1,52 @@
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const dbPath = path.resolve(__dirname, '../../../citizen_connect.db');
+import { createClient } from '@libsql/client';
 
 let dbInstance = null;
+let client = null;
 
 export const getDb = async () => {
     if (dbInstance) return dbInstance;
 
-    dbInstance = await open({
-        filename: dbPath,
-        driver: sqlite3.Database
+    const url = process.env.TURSO_DATABASE_URL;
+    const authToken = process.env.TURSO_AUTH_TOKEN;
+
+    if (!url || !authToken) {
+        throw new Error("Missing TURSO_DATABASE_URL or TURSO_AUTH_TOKEN in environment variables");
+    }
+
+    client = createClient({
+        url,
+        authToken,
     });
+
+    dbInstance = {
+        get: async (sql, params = []) => {
+            const result = await client.execute({ sql, args: params });
+            if (result.rows.length > 0) {
+                return result.rows[0];
+            }
+            return undefined;
+        },
+        all: async (sql, params = []) => {
+            const result = await client.execute({ sql, args: params });
+            return result.rows;
+        },
+        run: async (sql, params = []) => {
+            const result = await client.execute({ sql, args: params });
+            return {
+                lastID: result.lastInsertRowid !== undefined ? Number(result.lastInsertRowid) : undefined,
+                changes: result.rowsAffected 
+            };
+        },
+        exec: async (sql) => {
+            try {
+                await client.executeMultiple(sql);
+            } catch (err) {
+                // executeMultiple might fail on some ALTER TABLE commands in old libsql versions, fallback to execute
+                await client.execute(sql);
+            }
+            return true;
+        }
+    };
 
     await initDb();
     return dbInstance;

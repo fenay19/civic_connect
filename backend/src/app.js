@@ -27,6 +27,15 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/api/complaints", complaintRoutes);
 app.use("/api/users", userRoutes);
 
+// Webhook for Serverless environment
+app.post("/api/telegram-webhook", (req, res) => {
+    import("./services/telegram.service.js").then(({ getBot }) => {
+        const bot = getBot();
+        if (bot) bot.processUpdate(req.body);
+    }).catch(console.error);
+    res.sendStatus(200);
+});
+
 /* -----------------------------
    Health check
    ----------------------------- */

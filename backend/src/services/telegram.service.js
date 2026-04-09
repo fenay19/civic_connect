@@ -56,8 +56,14 @@ export function initTelegramBot() {
         return null;
     }
 
-    bot = new TelegramBot(BOT_TOKEN, { polling: true });
-    console.log("🤖 Telegram bot started (polling mode)");
+    const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production';
+    if (isVercel) {
+        bot = new TelegramBot(BOT_TOKEN, { polling: false });
+        console.log("🤖 Telegram bot started (webhook / outbound mode)");
+    } else {
+        bot = new TelegramBot(BOT_TOKEN, { polling: true });
+        console.log("🤖 Telegram bot started (polling mode)");
+    }
 
     // Suppress noisy polling errors
     bot.on("polling_error", (err) => {

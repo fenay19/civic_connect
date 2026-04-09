@@ -8,9 +8,18 @@ const NLP_SERVICE_URL =
     process.env.NLP_SERVICE_URL ||
     "https://dewanshu-chirkhe-grievance-api.hf.space";
 
-const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY,
-});
+let groqInstance = null;
+function getGroq() {
+    if (!groqInstance) {
+        if (!process.env.GROQ_API_KEY) {
+            console.warn("⚠️  GROQ_API_KEY is not set.");
+        }
+        groqInstance = new Groq({
+            apiKey: process.env.GROQ_API_KEY || "dummy",
+        });
+    }
+    return groqInstance;
+}
 
 const CATEGORY_MAP = {
     healthcare: "Health Department",
@@ -125,7 +134,7 @@ Return ONLY JSON:
 `;
 
     try {
-        const response = await groq.chat.completions.create({
+        const response = await getGroq().chat.completions.create({
             model: "llama-3.3-70b-versatile",
             messages: [{ role: "user", content: prompt }],
             temperature: 0.2,
