@@ -1,7 +1,7 @@
 import { Grievance, GrievanceFilters } from "@/types/grievance";
 
 const API_BASE_URL =
-    import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+    import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000/api`;
 
 export async function fetchGrievances(): Promise<Grievance[]> {
     const response = await fetch(`${API_BASE_URL}/complaints`);

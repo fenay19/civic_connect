@@ -9,25 +9,9 @@ import { initTelegramBot } from "./services/telegram.service.js";
 
 const app = express();
 
-/* -----------------------------
-   CORS
-   ----------------------------- */
-const allowedOrigins = process.env.FRONTEND_URL
-    ? [
-          process.env.FRONTEND_URL,
-          "http://localhost:5173",
-          "http://localhost:8080",
-      ]
-    : [
-          "http://localhost:5173",
-          "http://localhost:8080",
-          "http://localhost:3000,",
-          "http://172.16.151.134:8080",
-      ];
-
 app.use(
     cors({
-        origin: allowedOrigins,
+        origin: true,
         credentials: true,
     }),
 );
