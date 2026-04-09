@@ -165,7 +165,7 @@ export const checkLinkToken = async (req, res) => {
     try {
         const { token } = req.params;
 
-        const data = linkTokens.get(token);
+        const data = await linkTokens.get(token);
         if (!data) {
             return res.json({ linked: false });
         }
@@ -182,3 +182,4 @@ export const checkLinkToken = async (req, res) => {
         res.status(500).json({ error: 'Failed to check token' });
     }
 };
+

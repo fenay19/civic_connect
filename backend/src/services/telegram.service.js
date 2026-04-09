@@ -7,11 +7,107 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT;
 
 let bot = null;
 
-// In-memory conversation state: chatId -> { step, data }
-const conversations = new Map();
+// ═══════════════════════════════════════════════════════
+//  PERSISTENT CONVERSATION STATE (Turso DB)
+// ═══════════════════════════════════════════════════════
 
-// Pre-registration token store: token -> { chatId, firstName, lastName, username, linkedAt }
-export const linkTokens = new Map();
+async function getConversation(chatId) {
+    try {
+        const db = await getDb();
+        const row = await db.get(
+            "SELECT step, data FROM telegram_conversations WHERE chat_id = ?",
+            [String(chatId)]
+        );
+        if (!row) return null;
+        return { step: row.step, data: JSON.parse(row.data) };
+    } catch (err) {
+        console.error("getConversation error:", err.message);
+        return null;
+    }
+}
+
+async function setConversation(chatId, step, data) {
+    try {
+        const db = await getDb();
+        const dataStr = JSON.stringify(data);
+        // Upsert: try insert, on conflict update
+        await db.run(
+            `INSERT INTO telegram_conversations (chat_id, step, data, updated_at) 
+             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+             ON CONFLICT(chat_id) DO UPDATE SET step = ?, data = ?, updated_at = CURRENT_TIMESTAMP`,
+            [String(chatId), step, dataStr, step, dataStr]
+        );
+    } catch (err) {
+        console.error("setConversation error:", err.message);
+    }
+}
+
+async function deleteConversation(chatId) {
+    try {
+        const db = await getDb();
+        await db.run("DELETE FROM telegram_conversations WHERE chat_id = ?", [String(chatId)]);
+    } catch (err) {
+        console.error("deleteConversation error:", err.message);
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+//  PERSISTENT LINK TOKENS (Turso DB)
+// ═══════════════════════════════════════════════════════
+
+async function setLinkToken(token, data) {
+    try {
+        const db = await getDb();
+        await db.run(
+            `INSERT INTO telegram_link_tokens (token, chat_id, first_name, last_name, username, linked_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(token) DO UPDATE SET chat_id = ?, first_name = ?, last_name = ?, username = ?, linked_at = ?`,
+            [
+                token, data.chatId, data.firstName || "", data.lastName || "", data.username || "", data.linkedAt,
+                data.chatId, data.firstName || "", data.lastName || "", data.username || "", data.linkedAt
+            ]
+        );
+
+        // Cleanup old tokens (>15 min)
+        const cutoff = Date.now() - 15 * 60 * 1000;
+        await db.run("DELETE FROM telegram_link_tokens WHERE linked_at < ?", [cutoff]);
+    } catch (err) {
+        console.error("setLinkToken error:", err.message);
+    }
+}
+
+async function getLinkToken(token) {
+    try {
+        const db = await getDb();
+        const row = await db.get("SELECT * FROM telegram_link_tokens WHERE token = ?", [token]);
+        if (!row) return null;
+
+        // Check if expired (>15 min)
+        if (Date.now() - Number(row.linked_at) > 15 * 60 * 1000) {
+            await db.run("DELETE FROM telegram_link_tokens WHERE token = ?", [token]);
+            return null;
+        }
+
+        return {
+            chatId: row.chat_id,
+            firstName: row.first_name,
+            lastName: row.last_name,
+            username: row.username,
+            linkedAt: Number(row.linked_at),
+        };
+    } catch (err) {
+        console.error("getLinkToken error:", err.message);
+        return null;
+    }
+}
+
+// Backwards-compatible export (used by users.controller.js)
+// Now backed by DB instead of in-memory Map
+export const linkTokens = {
+    get: async (token) => await getLinkToken(token),
+    set: async (token, data) => await setLinkToken(token, data),
+};
+
 
 // ═══════════════════════════════════════════════════════
 //  CATEGORY & DEPARTMENT MAPPING
@@ -56,10 +152,13 @@ export function initTelegramBot() {
         return null;
     }
 
+    // Prevent double-init within the same invocation
+    if (bot) return bot;
+
     const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production';
     if (isVercel) {
         bot = new TelegramBot(BOT_TOKEN, { polling: false });
-        console.log("🤖 Telegram bot started (webhook / outbound mode)");
+        console.log("🤖 Telegram bot started (webhook mode)");
     } else {
         bot = new TelegramBot(BOT_TOKEN, { polling: true });
         console.log("🤖 Telegram bot started (polling mode)");
@@ -97,7 +196,50 @@ export function initTelegramBot() {
 }
 
 export function getBot() {
+    // Auto-init if needed (important for webhook invocations)
+    if (!bot) {
+        initTelegramBot();
+    }
     return bot;
+}
+
+// ═══════════════════════════════════════════════════════
+//  WEBHOOK SETUP  (call once after deploy)
+// ═══════════════════════════════════════════════════════
+
+export async function setupWebhook(backendUrl) {
+    if (!BOT_TOKEN) {
+        return { success: false, error: "TELEGRAM_BOT token not set" };
+    }
+
+    const b = getBot();
+    if (!b) {
+        return { success: false, error: "Bot not initialized" };
+    }
+
+    const webhookUrl = `${backendUrl}/api/telegram-webhook`;
+
+    try {
+        // Delete any existing webhook first
+        await b.deleteWebHook();
+        
+        // Set the new webhook
+        const result = await b.setWebHook(webhookUrl);
+        console.log(`✅ Webhook set to: ${webhookUrl} — result: ${result}`);
+
+        // Verify webhook info
+        const info = await b.getWebHookInfo();
+        console.log(`ℹ️  Webhook info:`, JSON.stringify(info));
+
+        return {
+            success: true,
+            url: webhookUrl,
+            info,
+        };
+    } catch (error) {
+        console.error("❌ Failed to set webhook:", error.message);
+        return { success: false, error: error.message };
+    }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -125,7 +267,7 @@ async function handleCallbackQuery(query) {
             await handleSkipImage(chatId);
             break;
         case "cancel_complaint":
-            conversations.delete(chatId);
+            await deleteConversation(chatId);
             bot.sendMessage(chatId, "🚫  _Complaint cancelled._", {
                 parse_mode: "Markdown",
                 reply_markup: { remove_keyboard: true },
@@ -155,9 +297,9 @@ async function handleStart(msg, match) {
         const firstName = msg.from?.first_name || "there";
         bot.sendMessage(
             chatId,
-            `━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `━━━━━━━━━━━━━━━━━\n` +
             `🏛️  *CITIZEN CONNECT*\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+            `━━━━━━━━━━━━━━━━━\n\n` +
             `Hello *${firstName}*! 👋\n\n` +
             `Welcome to the official *Citizen Grievance Bot*.\n\n` +
             `Here you can:\n` +
@@ -182,7 +324,7 @@ async function handleStart(msg, match) {
             return;
         }
 
-        linkTokens.set(token, {
+        await setLinkToken(token, {
             chatId: String(chatId),
             firstName: msg.from?.first_name || "",
             lastName: msg.from?.last_name || "",
@@ -190,19 +332,12 @@ async function handleStart(msg, match) {
             linkedAt: Date.now(),
         });
 
-        // Cleanup old tokens (>15 min)
-        for (const [key, val] of linkTokens.entries()) {
-            if (Date.now() - val.linkedAt > 15 * 60 * 1000) {
-                linkTokens.delete(key);
-            }
-        }
-
         const displayName = msg.from?.first_name || "there";
         bot.sendMessage(
             chatId,
-            `━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `━━━━━━━━━━━━━━━━━\n` +
             `✅  *TELEGRAM CONNECTED*\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+            `━━━━━━━━━━━━━━━━━\n\n` +
             `Hello *${displayName}*! 🎉\n\n` +
             `Your Telegram account is now linked to the\n` +
             `registration page.\n\n` +
@@ -249,9 +384,9 @@ async function handleStart(msg, match) {
 
         bot.sendMessage(
             chatId,
-            `━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `━━━━━━━━━━━━━━━━━\n` +
             `✅  *ACCOUNT LINKED*\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+            `━━━━━━━━━━━━━━━━━\n\n` +
             `Welcome, *${user.name}*! 🎉\n\n` +
             `Your account is now connected.\n` +
             `Use the buttons below to get started:`,
@@ -296,9 +431,9 @@ async function handleComplainStart(msg) {
     if (!user) {
         bot.sendMessage(
             chatId,
-            `━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `━━━━━━━━━━━━━━━━━\n` +
             `⚠️  *ACCOUNT NOT LINKED*\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+            `━━━━━━━━━━━━━━━━━\n\n` +
             `Your Telegram is not linked to an account.\n\n` +
             `Please register at the Citizen Connect\n` +
             `website first, then connect your Telegram.`,
@@ -307,16 +442,13 @@ async function handleComplainStart(msg) {
         return;
     }
 
-    conversations.set(chatId, {
-        step: "awaiting_text",
-        data: { userId: user.id, userName: user.name },
-    });
+    await setConversation(chatId, "awaiting_text", { userId: user.id, userName: user.name });
 
     bot.sendMessage(
         chatId,
-        `━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━\n` +
         `📝  *FILE A NEW COMPLAINT*\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `━━━━━━━━━━━━━━━━━\n\n` +
         `*Step 1 of 3* — Describe your issue\n\n` +
         `Please type out your grievance in detail.\n` +
         `Include:\n\n` +
@@ -371,9 +503,9 @@ async function handleStatus(msg, match) {
     if (complaints.length === 0) {
         bot.sendMessage(
             chatId,
-            `━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `━━━━━━━━━━━━━━━━━\n` +
             `📭  *NO COMPLAINTS FOUND*\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+            `━━━━━━━━━━━━━━━━━\n\n` +
             `You haven't filed any complaints yet.\n` +
             `Tap below to file your first one!`,
             {
@@ -392,9 +524,9 @@ async function handleStatus(msg, match) {
     const statusLabel = { pending: "Pending", in_progress: "In Progress", resolved: "Resolved" };
 
     let message =
-        `━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━\n` +
         `📋  *YOUR COMPLAINTS*\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+        `━━━━━━━━━━━━━━━━━\n\n`;
 
     for (const c of complaints) {
         const emoji = statusEmoji[c.status] || "⚪";
@@ -457,9 +589,9 @@ async function showComplaintDetail(chatId, from, complaintId) {
 
     bot.sendMessage(
         chatId,
-        `━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━\n` +
         `📋  *COMPLAINT DETAILS*\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `━━━━━━━━━━━━━━━━━\n\n` +
         `🆔  *ID:*  \`${complaint.id}\`\n` +
         `${emoji}  *Status:*  ${label}\n` +
         `${pEmoji}  *Priority:*  ${(analysis.priority || "N/A").toUpperCase()}\n` +
@@ -490,9 +622,9 @@ async function showComplaintDetail(chatId, from, complaintId) {
 async function handleHelp(msg) {
     bot.sendMessage(
         msg.chat.id,
-        `━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━\n` +
         `ℹ️  *HELP & INFORMATION*\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `━━━━━━━━━━━━━━━━━\n\n` +
         `🏛️  *Citizen Connect Bot* allows you to\n` +
         `interact with the grievance portal directly\n` +
         `from Telegram.\n\n` +
@@ -511,7 +643,7 @@ async function handleHelp(msg) {
         `  🔔  *Notifications*\n` +
         `       You'll receive messages when your\n` +
         `       complaint status is updated.\n\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━\n` +
         `_You can also type commands:_\n` +
         `/complain · /status · /help`,
         {
@@ -527,7 +659,7 @@ async function handleHelp(msg) {
 
 async function handleLocation(msg) {
     const chatId = msg.chat.id;
-    const conv = conversations.get(chatId);
+    const conv = await getConversation(chatId);
 
     if (!conv || conv.step !== "awaiting_location") return;
 
@@ -544,7 +676,7 @@ async function handleLocation(msg) {
 
     // Move to complaint creation
     await createComplaintFromBot(chatId, conv.data);
-    conversations.delete(chatId);
+    await deleteConversation(chatId);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -553,7 +685,7 @@ async function handleLocation(msg) {
 
 async function handlePhoto(msg) {
     const chatId = msg.chat.id;
-    const conv = conversations.get(chatId);
+    const conv = await getConversation(chatId);
 
     if (!conv || conv.step !== "awaiting_image") return;
 
@@ -564,6 +696,9 @@ async function handlePhoto(msg) {
     try {
         const fileLink = await bot.getFileLink(bestPhoto.file_id);
         conv.data.image = fileLink;
+
+        // Save updated state to DB
+        await setConversation(chatId, "awaiting_location", conv.data);
 
         bot.sendMessage(
             chatId,
@@ -583,8 +718,6 @@ async function handlePhoto(msg) {
                 },
             }
         );
-
-        conv.step = "awaiting_location";
     } catch (err) {
         console.error("Error getting photo link:", err.message);
         bot.sendMessage(chatId, "⚠️  _Couldn't process the photo. You can skip it._", {
@@ -604,10 +737,10 @@ async function handlePhoto(msg) {
 // ═══════════════════════════════════════════════════════
 
 async function handleSkipImage(chatId) {
-    const conv = conversations.get(chatId);
+    const conv = await getConversation(chatId);
     if (!conv || conv.step !== "awaiting_image") return;
 
-    conv.step = "awaiting_location";
+    await setConversation(chatId, "awaiting_location", conv.data);
 
     bot.sendMessage(
         chatId,
@@ -633,7 +766,7 @@ async function handleSkipImage(chatId) {
 
 async function handleMessage(msg) {
     const chatId = msg.chat.id;
-    const conv = conversations.get(chatId);
+    const conv = await getConversation(chatId);
 
     if (!conv) return;
     if (msg.text?.startsWith("/")) return;
@@ -642,7 +775,7 @@ async function handleMessage(msg) {
 
     // Cancel button from reply keyboard
     if (msg.text === "❌  Cancel Complaint") {
-        conversations.delete(chatId);
+        await deleteConversation(chatId);
         bot.sendMessage(chatId, "🚫  _Complaint cancelled._", {
             parse_mode: "Markdown",
             reply_markup: { remove_keyboard: true },
@@ -664,7 +797,7 @@ async function handleMessage(msg) {
         }
 
         conv.data.text = text;
-        conv.step = "awaiting_image";
+        await setConversation(chatId, "awaiting_image", conv.data);
 
         bot.sendMessage(
             chatId,
@@ -754,9 +887,9 @@ async function createComplaintFromBot(chatId, data) {
 
         bot.sendMessage(
             chatId,
-            `━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `━━━━━━━━━━━━━━━━━\n` +
             `✅  *COMPLAINT FILED!*\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+            `━━━━━━━━━━━━━━━━━\n\n` +
             `Your complaint has been received and\n` +
             `analysed by our AI system.\n\n` +
             `🆔  *Tracking ID:*  \`${id}\`\n\n` +
@@ -764,7 +897,7 @@ async function createComplaintFromBot(chatId, data) {
             `${pEmoji}  *Priority:*  ${analysis.priority.toUpperCase()}\n` +
             `🏢  *Department:*  ${analysis.suggestedDepartment}\n` +
             `😐  *Sentiment:*  ${analysis.sentiment}\n\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+            `━━━━━━━━━━━━━━━━━\n\n` +
             `🔔  _You'll receive a notification when\n` +
             `the status of this complaint changes._`,
             {
@@ -900,9 +1033,9 @@ async function escalatePriority(complaintId) {
             if (user?.telegram_chat_id && bot) {
                 bot.sendMessage(
                     user.telegram_chat_id,
-                    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+                    `━━━━━━━━━━━━━━━━━\n` +
                     `🔺  *PRIORITY ESCALATED*\n` +
-                    `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+                    `━━━━━━━━━━━━━━━━━\n\n` +
                     `Your complaint *${complaintId}* has been\n` +
                     `upgraded to *HIGH* priority! 🔴\n\n` +
                     `Multiple residents near you confirmed\n` +

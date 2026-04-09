@@ -116,6 +116,28 @@ const initDb = async () => {
         );
     `);
 
+    // ---------- Telegram conversation state (persisted for serverless) ----------
+    await dbInstance.exec(`
+        CREATE TABLE IF NOT EXISTS telegram_conversations (
+            chat_id TEXT PRIMARY KEY,
+            step TEXT NOT NULL,
+            data TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+    `);
+
+    // ---------- Telegram link tokens (persisted for serverless) ----------
+    await dbInstance.exec(`
+        CREATE TABLE IF NOT EXISTS telegram_link_tokens (
+            token TEXT PRIMARY KEY,
+            chat_id TEXT NOT NULL,
+            first_name TEXT,
+            last_name TEXT,
+            username TEXT,
+            linked_at INTEGER NOT NULL
+        );
+    `);
+
     // ---------- Safe migrations for existing databases ----------
     // Add new columns to existing tables if they don't exist yet
     const safeAddColumn = async (table, column, type) => {
