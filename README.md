@@ -427,28 +427,6 @@ Response: { status: "ok" }
 
 ---
 
-## 🌐 Deployment
-
-### Deploy Frontend to Vercel
-
-```bash
-cd frontend
-
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel
-```
-
-### Deploy Backend to Vercel
-
-```bash
-cd backend
-
-# Deploy
-vercel
-```
 
 ### Configure Environment Variables on Vercel
 
@@ -456,51 +434,6 @@ vercel
 2. Navigate to Environment Variables
 3. Add all required variables from your `.env` file
 4. Redeploy your application
-
----
-
-## 🗺️ Project Roadmap
-
-### Phase 1 ✅
-- [x] Basic user authentication
-- [x] Complaint submission form
-- [x] Admin dashboard
-- [x] Telegram bot integration
-- [x] Real-time status tracking
-
-### Phase 2 (In Progress)
-- [ ] Email notifications
-- [ ] Advanced analytics
-- [ ] Complaint categorization with ML
-- [ ] Mobile app (React Native)
-- [ ] Multi-language support
-
-### Phase 3 (Planned)
-- [ ] Video submission support
-- [ ] AI chatbot for assistance
-- [ ] Integration with government systems
-- [ ] Community voting on complaints
-- [ ] Offline-first mobile experience
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how you can help:
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
-
-### Development Guidelines
-
-- Follow the existing code style
-- Write meaningful commit messages
-- Add comments for complex logic
-- Test your changes before submitting
-- Update documentation as needed
 
 ---
 
